@@ -1,0 +1,21 @@
+#! /usr/bin/env python
+
+import manageldap, argparse, os
+
+def shellexists(shell):
+    with open("/etc/shells") as f:
+        shells = [x.strip() for x in f.readlines()]
+        return (shell in shells) and os.path.exists(shell)
+
+parser = argparse.ArgumentParser(description="Change a user's shell.")
+parser.add_argument('-s','--shell',type=str,help='The new login shell of the user.',default='')
+parser.add_argument("user",type=str,help='The login whose shell is being changed. This must be a valid shell in /etc/shells.')
+args = parser.parse_args()
+
+if not shellexists(args.shell):
+    print "The specified shell, %s, does not exist in either /etc/shells or is not installed." % args.shell
+    exit(1)
+
+moddeduser = manageldap.usermod(args.user,shell=args.shell)
+
+manageldap.update(manageldap.getBindDn(),manageldap.server,moddeduser)

@@ -1,0 +1,12 @@
+#! /usr/bin/env python
+
+import manageldap, argparse
+
+parser = argparse.ArgumentParser(description="Add users to LDAP Directory")
+parser.add_argument('-g','--gid',type=int,help='The gid of the new group.',default=0)
+parser.add_argument("group")
+args = parser.parse_args()
+
+newgroup = manageldap.groupadd(args.group,gid=args.gid)
+
+manageldap.update("","",newgroup)

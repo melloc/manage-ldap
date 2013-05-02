@@ -1,0 +1,22 @@
+#! /usr/bin/env python
+
+import manageldap, argparse
+
+parser = argparse.ArgumentParser(description="Modify users in the LDAP Directory")
+parser.add_argument('-a','--append',action='store_true',help="Append the list of groups to the user's current groups.\nMust be used with the --groups option.")
+parser.add_argument('-g','--gid',type=int,help='The new gid of the modded user.',default=0)
+parser.add_argument('-G','--groups',type=str,default='',help='A comma separated list of group names')
+parser.add_argument('-l','--nlogin',type=str,help='This is the new username of the user.',default="")
+parser.add_argument('-L','--lock',default=False,action="store_true",help='Lock a user out of his/her account.')
+parser.add_argument('-s','--shell',type=str,help='The new login shell of the user.',default='')
+parser.add_argument('-u','--uid',type=int,help='The new uid of the modded user.',default=0)
+parser.add_argument('-U','--unlock',default=False,action="store_true",help='Unlock a user out of his/her account.')
+parser.add_argument('-n','--name',type=str,help='The name of the user. This is placed in the comment field.',default='')
+parser.add_argument("login",type=str)
+args = parser.parse_args()
+
+groups=args.groups.split(",")
+groups.remove('')
+moddeduser = manageldap.usermod(args.login,groups=groups,append=args.append,uid=args.uid,gid=args.gid,shell=args.shell,name=args.name,login=args.nlogin,lock=args.lock,unlock=args.unlock)
+
+manageldap.update("","",moddeduser)
