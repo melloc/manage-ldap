@@ -1,0 +1,146 @@
+======
+README
+======
+
+Author: Cody Peter Mello <cody@cs.brown.edu>
+
+In this file:
+
+* Description
+* Dependencies
+* Configuring your LDAP server
+* Configuring these scripts
+* Modifying these scripts
+
+If you have any questions, e-mail me! If you use my scripts, please let me
+know! I'd be curious to know where these end up, and how they're used! :)
+
+Description
+===========
+
+This is a collection of Python scripts that I have worked on over time
+for managing users in an LDAP directory. I found that most tools out there
+for managing user accounts didn't match my needs, so I decided to make my
+own. Specifically, I wanted tools that behaved closely to the standard user
+management tools found under most (if not all) Linux systems.
+
+Dependencies
+============
+
+Everything is written in Python <http://www.python.org/>, which can be found
+installed on almost all modern day systems. Beyond this, you will need:
+
+- python-ldap
+- argparse
+- awk
+
+Under Debian, you can run:
+
+$ sudo apt-get install python-ldap python-argparse gawk
+
+Under Gentoo:
+
+$ sudo emerge dev-python/python-ldap virtual/python-argparse virtual/awk
+
+Configuring your LDAP server
+============================
+
+I only have experience working with OpenLDAP, so I can't help much with
+anything else, but most of this should apply to other directory servers. If
+there is any important information that should be added regarding other
+servers, please feel free to let me know.
+
+For these scripts to work, you should have the following entries:
+
+dn: dc=example,dc=com
+dc: example
+objectClass: top
+objectClass: domain
+
+ou=People,dc=example,dc=com
+ou: People
+objectClass: top
+objectClass: organizationalUnit
+
+ou=Group,dc=example,dc=com
+ou: Group
+objectClass: top
+objectClass: organizationalUnit
+
+You can use MigrationTools <http://www.padl.com/tools.html> to generate
+these. They are also extremely useful for migrating an existing system's
+/etc/{passwd,group,shadow} into LDAP.
+
+Important: You should note that the LDIF for users is incompatible with these
+scripts. MigrationTools generates entries that have the `account' objectclass
+as the structural objectclass. This can ben fixed by changing the line that
+says "objectClass: account" to instead say "objectClass: inetOrgPerson". This
+will allow you to have some very useful entries in your setup (such as
+`mail'), which is nice when and if you start using software that can use LDAP.
+
+Once you have everything prepped for accounts, you will want the following
+ACLs to make sure these scripts can function:
+
+slapd.conf
+----------
+
+# This is necessary for root to authenticate via SASL external authentication.
+access to * by dn.exact=gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth manage
+        by * break
+
+# This allows users to change their own passwords, but prevent them from
+# reading them. Since PAM can handle password changes, standard `passwd'
+# can be used.
+access to attrs=userPassword
+        by self =xw
+        by anonymous auth
+        by * none
+
+# This is needed for chfn and chsh to work.
+access to attrs=loginShell,gecos,roomNumber,homePhone,cn
+        by self write
+        by * read
+
+# This permits all users (including anonymous) to get certain information
+# about the directory.
+access to dn.base=""
+        by * read
+
+# Allow authenticated users to read everything. If you want to allow anonymous
+# users to do anything, you'll want to modify this.
+access to *
+        by users read
+
+----------
+
+Note that this is written for slapd.conf. If you want to use OLC, you will
+need to modify them to into the appropriate LDIFs. For more information on
+ACLs in OpenLDAP, consult slapd.access(5).
+
+
+Configuring these scripts
+=========================
+
+Configuring these scripts is easy. Towards the top of manageldap.py, there
+are three lines that you should modify, labeled "Configuration".
+
+`server' is the LDAP server that should be used by default. This is used by
+the update() function unless a server is provided as an argument.
+
+`basedn' is the base DN for your LDAP directory. This is used for determining
+under what tree the different organizational units exist.
+
+`maildomain' is the domain at which users receive mail. This is used when
+generating the mail attribute for a user.
+
+Modifying these scripts
+=======================
+
+These scripts are pretty straightforward. There are some things that could
+potentially be confusing that I might elaborate on here at some point. The
+general flow of the program is:
+
+1. Generate a list of changes that should be made with one of the functions
+2. Call update() with the changes and any options that you want to use.
+3. update() in turn calles handleLDIF() which processes the changes 
+
