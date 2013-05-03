@@ -1,14 +1,34 @@
 #! /usr/bin/env python
 
+################################################################################
+#
+# Please consult the README for information on modifying these scripts and 
+# getting configuring LDAP to work with them.
+#
+################################################################################
+
 import ldap, ldap.sasl, ldif, getpass, sys, os
 from subprocess import *
 from StringIO import StringIO
 from collections import namedtuple
 
+# Configuration
 server = "techhouse.org"
 basedn = "dc=techhouse,dc=org"
 maildomain = "techhouse.org"
 
+################################################################################
+# Changetypes
+# For the most part, these map to the same changetypes that you would use in an
+# LDIF processed by ldapmodify. 
+#
+# The exception is Transform, which is unique to these scripts. Since I wanted
+# the functions to generate a list of changes to make instead of making the
+# changes themselves, modifying values that contain data we want to keep (such
+# as gecos) became problematic. Transform allows us to take in the data and
+# return the modified version later, once we have a connection to the directory.
+#
+################################################################################
 Add = namedtuple("Add","dn modlist")
 Modify = namedtuple("Modify","dn modlist")
 Delete = namedtuple("Delete","dn")
@@ -16,25 +36,33 @@ RDNMod = namedtuple("RDNMod","dn new flag")
 Transform = namedtuple("Transform","dn attr fun")
 
 def getNextId(database="passwd"):
+    """Return the next available id for the provided getent(1) database."""
     getent = Popen(["getent", database], stdout=PIPE)
-    awk = Popen(["awk", "-F:", "($3>600) && ($3<10000) && ($3>maxuid) { maxuid=$3; } END { print maxuid+1; }"],stdin=getent.stdout,stdout=PIPE)
+    awk = Popen(["awk", "-F:", "($3>1000) && ($3<10000) && ($3>maxuid) { maxuid=$3; } END { print maxuid+1; }"],stdin=getent.stdout,stdout=PIPE)
     getent.stdout.close()
     highest = awk.communicate()[0]
     return highest.strip()
 
 def getBindDn():
+    """Return a DN for binding as the current logged in user. 
+    
+    This function assumes that the uid 'user' maps to the DN uid=user,ou=People
+    beneath the base DN."""
     username = getpass.getuser()
     binddn = "uid=%s,ou=People,%s" % (username,basedn)
     return binddn
 
 def getUsername(dn):
+    """Get the uid/cn of the given DN."""
     return dn.split(',')[0].split('=')[1]
 
 def chainUpdate(l, value, position):
+    """Update a list and return it."""
     l[position] = value
     return l
 
 def gecosChange(value, position):
+    """Return a lambda that can modify a gecos at the spcified position."""
     return lambda gecos : ','.join(chainUpdate(gecos.split(','),value,position))
 
 def useradd(user,groups=[],uid=0,gid=0,name="",home="",shell="/bin/bash",gecos="",passwd='{crypt}sadtCr0CILzv2',room='',phone='',other=''):
@@ -75,7 +103,7 @@ def groupmems(add="",delete="",group="",list=False,purge=False):
     if not group:
         raise Exception("Expected a group name.")
     elif not (add or delete or list or purge):
-        raise Exception("Expected an action.\nPossible actions include:\n\t--add\n\t--delete\n\t--list\n\t--list\n\t--purge")
+        raise Exception("Expected an action.\nPossible actions include:\n\t--add\n\t--delete\n\t--list\n\t--purge")
     dn = "cn=%s,ou=Group,%s" % (group, basedn)
     attrs = []
     if add:
@@ -101,7 +129,7 @@ def usermod(user,groups=[],append=False,home="",name="",expiredate="",inactive=0
             for x in groups:
                 results.extend(groupmems(add=user,group=x))
         else:
-            raise Exception("Removal of users through usermod is not yet supported. Please use groupmems.\nGroups not affected.")
+            raise Exception("Removal of users from groups through usermod is not yet supported. Please use groupmems.\nGroups not affected.")
     if home:
         if move_home:
             raise Exception("Currently, usermod does not create a users home directory.")
@@ -126,7 +154,7 @@ def usermod(user,groups=[],append=False,home="",name="",expiredate="",inactive=0
         attrs.append((ldap.MOD_REPLACE, 'gid', gid))
     if login:
         # This will require changing the actual record, which will require slightly different changes.
-        results.append(RDNMod("uid=%s,ou=People,%s" % (user, based), "uid=%s" % login, True))
+        results.append(RDNMod("uid=%s,ou=People,%s" % (user, basedn), "uid=%s" % login, True))
     if lock:
         # This will require some string manipulation of the crypted password. An exclamation point (!) must be added in front of the crypted password.
         attrs.append((ldap.MOD_REPLACE, 'loginShell', "/usr/sbin/nologin"))
@@ -137,7 +165,9 @@ def usermod(user,groups=[],append=False,home="",name="",expiredate="",inactive=0
         uid = str(uid)
         attrs.append((ldap.MOD_REPLACE, 'uid', uid))
     if unlock:
-        # This will require some string manipulation of the crypted password. An exclamation point (!) must be remove from the front of the crypted password.
+        # This will require some string manipulation of the crypted
+        # password. An exclamation point (!) must be remove from the front
+        # of the crypted password.
         attrs.append((ldap.MOD_REPLACE, 'loginShell', "/bin/bash"))
         results.append(Transform(dn,"userPassword",lambda pw: pw[1:] if pw.startswith("!") else pw))
     moddeduser = Modify(dn,attrs)
@@ -145,6 +175,7 @@ def usermod(user,groups=[],append=False,home="",name="",expiredate="",inactive=0
     return results
 
 def handleLDIF(connection, ldif):
+    """Handle processing a given LDIF using the provided connection."""
     action = type(ldif)
     try:
         if action == Add:
@@ -169,6 +200,8 @@ def handleLDIF(connection, ldif):
         print(ldif)    
 
 def update(dn, server, actions, passwd="", external=False, secure=False):
+    # Try to use external SASL authentication if we want it, are root,
+    # or no dn was specified with which we should bind.
     external = not os.getuid() or external or not dn
     connection = ldap.initialize("ldapi:///" if external else "ldap://%s" % server)
     try:
@@ -176,7 +209,9 @@ def update(dn, server, actions, passwd="", external=False, secure=False):
         if external:
             connection.sasl_interactive_bind_s("",ldap.sasl.external())
         else:
-            connection.bind_s(dn, passwd if passwd else getpass.getpass("Password for " + getUsername(dn) + ": "), ldap.AUTH_SIMPLE)
+            # If a password hasn't been given, request one.
+            passwd = passwd if passwd else getpass.getpass("Password for " + getUsername(dn) + ": ")
+            connection.bind_s(dn, passwd, ldap.AUTH_SIMPLE)
     except ldap.SERVER_DOWN:
         print("It would seem that the server is down. Please check your internet connection.")
         if secure: print("You have attempted to connect securely. It may be that the LDAP server does not support secure connections.")
@@ -192,6 +227,7 @@ def update(dn, server, actions, passwd="", external=False, secure=False):
             print e
         sys.exit()
     else:
+        # Process all of our actions.
         for action in actions:
             handleLDIF(connection,action)
     finally:
