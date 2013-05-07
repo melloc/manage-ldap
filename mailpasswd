@@ -1,0 +1,37 @@
+#! /usr/bin/env python
+
+from manageldap import *
+import argparse, getpass, ldap
+
+# mailpasswd [-m --modify] [-r room_no] [-w work_ph] [-h home_ph] [-o other] 
+parser = argparse.ArgumentParser(description="Retrieve (or modify) the invoking user's mail password.")
+parser.add_argument('-m','--modify',action='store_true',help="Change the user's mail password.")
+args = parser.parse_args()
+
+
+def printMailpasswd(conn, dn):
+    a = conn.search_s(dn, ldap.SCOPE_BASE)[0][1]
+    print "Your mail password is: %s" % a["userPassword"][0]
+
+def modifyMailpasswd(conn, dn):
+    passwd = getpass.getpass("New mail password: ")
+    again  = getpass.getpass("New mail password again: ")
+    if passwd != again:
+        print "Passwords do not match."
+        return
+    conn.modify_s(dn,[(ldap.MOD_REPLACE, 'userPassword', passwd)])
+
+def mailpasswd(change):
+    binddn = getBindDn()
+    uid = getUsername(binddn)
+    dn = "cn=%s,ou=mailpasswd,%s" % (uid, basedn)
+    conn = getConnection(binddn, server)
+    if conn:
+        try:
+            modifyMailpasswd(conn, dn) if change else printMailpasswd(conn, dn)
+        finally:
+            conn.unbind()
+    else:
+        print "mailpasswd couldn't complete. See above for errors. If the problem persists, please contact `root@techhouse.org'."
+
+mailpasswd(args.modify)

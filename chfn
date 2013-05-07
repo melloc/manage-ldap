@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 
-import manageldap, argparse, getpass
+from manageldap import *
+import argparse, getpass
 
 # chfn [-f full_name] [-r room_no] [-w work_ph] [-h home_ph] [-o other] [user]
 parser = argparse.ArgumentParser(description="Modify user information in the LDAP Directory.")
@@ -11,6 +12,5 @@ parser.add_argument('-o','--other',type=str,help='The new value for the other fi
 parser.add_argument("login",type=str,help='The username whose information is being modified.')
 args = parser.parse_args()
 
-moddeduser = manageldap.usermod(args.login,room=args.roomno,name=args.fullname,phone=args.phone,other=args.other)
-
-manageldap.update(manageldap.getBindDn(),manageldap.server,moddeduser)
+moddeduser = usermod(args.login,room=args.roomno,name=args.fullname,phone=args.phone,other=args.other)
+update(moddeduser)

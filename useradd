@@ -1,9 +1,10 @@
 #! /usr/bin/env python
 
-import manageldap, argparse
+from manageldap import *
+import argparse
 
 parser = argparse.ArgumentParser(description="Add users to LDAP Directory")
-parser.add_argument('-g','--groups',type=str,help='A comma separated list of group names')
+parser.add_argument('-g','--groups',type=str,help='A comma separated list of group names',default="")
 parser.add_argument('-u','--uid',type=int,help='The uid of the new user.',default=0)
 parser.add_argument('-n','--name',type=str,help='The name of the user. This is placed in the comment field.',default='')
 parser.add_argument('-s','--shell',type=str,help='The login shell of the user. The default shell is /bin/bash.',default="/bin/bash")
@@ -11,7 +12,8 @@ parser.add_argument('-c','--gecos',type=str,help='This is a description of the u
 parser.add_argument("login",type=str)
 args = parser.parse_args()
 
-
-newuser = manageldap.useradd(args.login,groups=args.groups.split(","),uid=args.uid,name=args.shell,gecos=args.gecos)
-
-manageldap.update("","",newuser)
+groups=args.groups.split(",")
+groups.remove('')
+newuser = useradd(args.login,groups=groups,uid=args.uid,name=args.shell,gecos=args.gecos)
+print newuser
+update(newuser)

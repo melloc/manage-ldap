@@ -1,15 +1,15 @@
 #! /usr/bin/env python
 
-import manageldap, argparse
+from manageldap import *
+import argparse
 
 parser = argparse.ArgumentParser(description="Add users to LDAP Directory")
 parser.add_argument('-a','--add',type=str,help='The user to add to the group.',default="")
 parser.add_argument('-d','--delete',type=str,help='The user to delete from the group.',default="")
-parser.add_argument('-g','--group',type=str,help='The name of the group.',default="")
+parser.add_argument('-g','--group',type=str,help='The name of the group.',required=True)
 parser.add_argument('-l','--list',type=str,help='List the members of this group.',default="/bin/bash")
 parser.add_argument('-p','--purge',type=str,help='Remove all users from this group.',default="")
 args = parser.parse_args()
 
-moddedmems = manageldap.groupmems(add=args.add,delete=args.delete,list=args.list,purge=args.purge,group=args.group)
-
-manageldap.update("","",moddedmems)
+moddedmems = groupmems(add=args.add,delete=args.delete,list=args.list,purge=args.purge,group=args.group)
+update(moddedmems)

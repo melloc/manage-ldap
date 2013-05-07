@@ -81,7 +81,7 @@ def useradd(user,groups=[],uid=0,gid=0,name="",home="",shell="/bin/bash",gecos="
               ('uidNumber', [uid]),
               ('gidNumber', [uid]),
               ('userPassword',[passwd]),
-              ('homeDirectory', []),
+              ('homeDirectory', ["/home/%s" % user]),
               ('mail', ["%s@%s" % (user, maildomain)]),
               ('gecos', [gecos if gecos else "%s,%s,%s,%s" % (name,room,phone,other)]) ]
     results.append(Add(dn,attrs))
@@ -191,15 +191,19 @@ def handleLDIF(connection, ldif):
             modlist = map(lambda y: (ldap.MOD_REPLACE, ldif.attr,ldif.fun(y)),a)
             connection.modify_s(ldif.dn,modlist)
         else:
-            raise Exception("Uknown action type.")
+            raise Exception("Unknown action type.")
     except ldap.TYPE_OR_VALUE_EXISTS:
         print("The value that you are trying to apply to attribute in '%s' is already set and exists." % ldif.dn)
         print(ldif)
     except ldap.ALREADY_EXISTS:
         print("This value already exists in the directory:")
         print(ldif)    
+    except ldap.INSUFFICIENT_ACCESS:
+        print "You do not have sufficient access to perform:", ldif
+    except ldap.NO_SUCH_OBJECT:
+        print "No appropriate object was found in the directory. This may be caused by a previous failure to add an object that you are now trying to modify. The associated change is:", ldif
 
-def update(dn, server, actions, passwd="", external=False, secure=False):
+def getConnection(dn, server, passwd="", external=False, secure=False):
     # Try to use external SASL authentication if we want it, are root,
     # or no dn was specified with which we should bind.
     external = not os.getuid() or external or not dn
@@ -215,21 +219,21 @@ def update(dn, server, actions, passwd="", external=False, secure=False):
     except ldap.SERVER_DOWN:
         print("It would seem that the server is down. Please check your internet connection.")
         if secure: print("You have attempted to connect securely. It may be that the LDAP server does not support secure connections.")
-        sys.exit()
     except ldap.INVALID_CREDENTIALS:
         print("The provided credentials were incorrect. Please try again.")
-        sys.exit()
     except ldap.LDAPError, e:
         print e.message['info']
         if type(e.message) == dict and e.message.has_key('desc'):
             print e.message['desc']
         else:
             print e
-        sys.exit()
     else:
+        return connection
+
+def update(actions):
+    connection = getConnection(getBindDn(),server)
+    try:
         # Process all of our actions.
-        for action in actions:
-            handleLDIF(connection,action)
+        map(lambda action : handleLDIF(connection,action),actions)
     finally:
         connection.unbind()
-    

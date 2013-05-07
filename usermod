@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 
-import manageldap, argparse
+from manageldap import *
+import argparse
 
 parser = argparse.ArgumentParser(description="Modify users in the LDAP Directory")
 parser.add_argument('-a','--append',action='store_true',help="Append the list of groups to the user's current groups.\nMust be used with the --groups option.")
@@ -17,6 +18,5 @@ args = parser.parse_args()
 
 groups=args.groups.split(",")
 groups.remove('')
-moddeduser = manageldap.usermod(args.login,groups=groups,append=args.append,uid=args.uid,gid=args.gid,shell=args.shell,name=args.name,login=args.nlogin,lock=args.lock,unlock=args.unlock)
-
-manageldap.update("","",moddeduser)
+moddeduser = usermod(args.login,groups=groups,append=args.append,uid=args.uid,gid=args.gid,shell=args.shell,name=args.name,login=args.nlogin,lock=args.lock,unlock=args.unlock)
+update(moddeduser)
