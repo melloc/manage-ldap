@@ -43,12 +43,12 @@ def getNextId(database="passwd"):
     highest = awk.communicate()[0]
     return highest.strip()
 
-def getBindDn():
+def getBindDn(user=""):
     """Return a DN for binding as the current logged in user. 
     
     This function assumes that the uid 'user' maps to the DN uid=user,ou=People
     beneath the base DN."""
-    username = getpass.getuser()
+    username = user or getpass.getuser()
     binddn = "uid=%s,ou=People,%s" % (username,basedn)
     return binddn
 
