@@ -1,7 +1,23 @@
 #! /usr/bin/env python
 
 from manageldap import *
-import argparse
+from subprocess import *
+import argparse, os, pwd, re
+
+def performLocal(name):
+    user = pwd.getpwnam(name)
+    uid = user.pw_uid
+    gid = user.pw_gid
+    home = user.pw_dir
+
+    if not os.path.isdir(home):
+        os.mkdir(home)
+
+    os.chown(home, uid, gid)
+
+    local = "/usr/local/sbin/adduser.local"
+    if os.path.exists(local):
+        adduser = call([local, name, str(uid), str(gid), home])
 
 parser = argparse.ArgumentParser(description="Add users to LDAP Directory")
 parser.add_argument('-g','--groups',type=str,help='A comma separated list of group names',default="")
@@ -12,8 +28,13 @@ parser.add_argument('-c','--gecos',type=str,help='This is a description of the u
 parser.add_argument("login",type=str)
 args = parser.parse_args()
 
-groups=args.groups.split(",")
-groups.remove('')
-newuser = useradd(args.login,groups=groups,uid=args.uid,name=args.shell,gecos=args.gecos)
-print newuser
-update(newuser)
+if re.match("^[a-z][a-z0-9-]*$", args.login):
+    groups=args.groups.split(",")
+    groups.remove('')
+    newuser = useradd(args.login,groups=groups,uid=args.uid,name=args.name,shell=args.shell,gecos=args.gecos)
+    update(newuser)
+
+    # Do local things (create home, run adduser scripts, etc.)
+    performLocal(args.login)
+else:
+    print("Username must start with a lowercase letter and contain only letters, numbers and dashes.")
