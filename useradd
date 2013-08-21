@@ -38,3 +38,4 @@ if re.match("^[a-z][a-z0-9-]*$", args.login):
     performLocal(args.login)
 else:
     print("Username must start with a lowercase letter and contain only letters, numbers and dashes.")
+    exit(1)

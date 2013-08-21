@@ -9,8 +9,8 @@ def shellexists(shell):
         return (shell in shells) and os.path.exists(shell)
 
 parser = argparse.ArgumentParser(description="Change a user's shell.")
-parser.add_argument('-s','--shell',type=str,help='The new login shell of the user.',default='')
-parser.add_argument("user",type=str,help='The login whose shell is being changed. This must be a valid shell in /etc/shells.')
+parser.add_argument('-s','--shell',type=str,help='The new login shell of the user. This must be a valid shell in /etc/shells.',default='')
+parser.add_argument("user",type=str,help='The login whose shell is being changed.')
 args = parser.parse_args()
 
 if not shellexists(args.shell):

@@ -23,7 +23,7 @@ def modifyMailpasswd(conn, dn, stdin=False):
         again  = getpass.getpass("New mail password again: ")
         if passwd != again:
             print "Passwords do not match."
-            return
+            exit(1)
 
     conn.modify_s(dn,[(ldap.MOD_REPLACE, 'userPassword', passwd)])
 
