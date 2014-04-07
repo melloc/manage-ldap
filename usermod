@@ -13,10 +13,11 @@ parser.add_argument('-s','--shell',type=str,help='The new login shell of the use
 parser.add_argument('-u','--uid',type=int,help='The new uid of the modded user.',default=0)
 parser.add_argument('-U','--unlock',default=False,action="store_true",help='Unlock a user out of his/her account.')
 parser.add_argument('-n','--name',type=str,help='The name of the user. This is placed in the comment field.',default='')
+parser.add_argument('-d','--home',type=str,help='The new home of the user.',default='')
 parser.add_argument("login",type=str)
 args = parser.parse_args()
 
 groups=args.groups.split(",")
 groups.remove('')
-moddeduser = usermod(args.login,groups=groups,append=args.append,uid=args.uid,gid=args.gid,shell=args.shell,name=args.name,login=args.nlogin,lock=args.lock,unlock=args.unlock)
+moddeduser = usermod(args.login,home=args.home,groups=groups,append=args.append,uid=args.uid,gid=args.gid,shell=args.shell,name=args.name,login=args.nlogin,lock=args.lock,unlock=args.unlock)
 update(moddeduser)

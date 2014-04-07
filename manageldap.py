@@ -118,7 +118,16 @@ def groupmems(add="",delete="",group="",list=False,purge=False):
         raise Exception("groupmems cannot list users yet")
     return [Modify(dn,attrs)]
 
-    
+def groupmod(group,name="",gid=0):
+    dn = "cn=%s,ou=Group,%s" % (group, basedn)
+    results = []
+    attrs = []
+    if name:
+        results.append(RDNMod(dn, "cn=%s" % name, True))
+    if gid:
+        attrs.append((ldap.MOD_REPLACE, 'gidNumber', gid))
+    results.insert(0, Modify(dn,attrs))
+    return results   
 
 def usermod(user,groups=[],append=False,home="",name="",expiredate="",inactive=0,gid=0,login="",lock=False,move_home=False,shell="",uid=0,unlock=False,room='',phone='',other=''):
     dn = "uid=%s,ou=People,%s" % (user, basedn)
@@ -134,6 +143,7 @@ def usermod(user,groups=[],append=False,home="",name="",expiredate="",inactive=0
         if move_home:
             raise Exception("Currently, usermod does not create a users home directory.")
         else:
+            attrs.append((ldap.MOD_REPLACE, 'homeDirectory', home))
             print("Note that without the --move-home option, the users files will all remain in their old home directory.")
     if name:
         attrs.append((ldap.MOD_REPLACE, 'cn', name))
@@ -171,7 +181,7 @@ def usermod(user,groups=[],append=False,home="",name="",expiredate="",inactive=0
         attrs.append((ldap.MOD_REPLACE, 'loginShell', "/bin/bash"))
         results.append(Transform(dn,"userPassword",lambda pw: pw[1:] if pw.startswith("!") else pw))
     moddeduser = Modify(dn,attrs)
-    results.append(moddeduser)
+    results.insert(0, moddeduser)
     return results
 
 def handleLDIF(connection, ldif):

@@ -1,0 +1,13 @@
+#! /usr/bin/env python
+
+from manageldap import *
+import argparse
+
+parser = argparse.ArgumentParser(description="Modify groups in the LDAP Directory")
+parser.add_argument('-g','--gid',type=int,help='The new gid of the group.',default=0)
+parser.add_argument('-n','--new-name',type=str,help='The new name of the group')
+parser.add_argument("group",type=str)
+args = parser.parse_args()
+
+moddedgroup = groupmod(args.group,name=args.new_name,gid=args.gid)
+update(moddedgroup)
