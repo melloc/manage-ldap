@@ -7,6 +7,8 @@ import argparse, getpass, ldap
 parser = argparse.ArgumentParser(description="Retrieve (or modify) the invoking user's mail password.")
 parser.add_argument('-m','--modify',action='store_true',help="Change the user's mail password.")
 parser.add_argument('-s','--stdin',action='store_true',help="Read the user's mail password from stdin.")
+parser.add_argument('-c','--create',action='store_true',help="Create a new entry for the user.")
+parser.add_argument('-d','--delete',action='store_true',help="Delete the existing entry for the user.")
 parser.add_argument('-u','--user',type=str,help="The user we should bind as.",default="")
 args = parser.parse_args()
 
@@ -15,7 +17,7 @@ def printMailpasswd(conn, dn):
     a = conn.search_s(dn, ldap.SCOPE_BASE)[0][1]
     print "Your mail password is: %s" % a["userPassword"][0]
 
-def modifyMailpasswd(conn, dn, stdin=False):
+def modifyMailpasswd(conn, dn, stdin=False, create=False):
     if stdin:
         passwd = raw_input()
     else:
@@ -24,20 +26,32 @@ def modifyMailpasswd(conn, dn, stdin=False):
         if passwd != again:
             print "Passwords do not match."
             exit(1)
+    if create:
+        cn = getUsername(dn)
+        print "Creating new user: %s" % cn
+        conn.add_s(dn,[ ('objectClass', ['simpleSecurityObject', 'organizationalRole']),
+                        ('cn', [cn]),
+                        ('userPassword', [passwd]) ])
+        print "Deleted %s" % dn
+    else:
+        conn.modify_s(dn,[(ldap.MOD_REPLACE, 'userPassword', passwd)])
 
-    conn.modify_s(dn,[(ldap.MOD_REPLACE, 'userPassword', passwd)])
-
-def mailpasswd(user, change, stdin=False):
+def mailpasswd(user, change, stdin=False, create=False, delete=False):
     binddn = getBindDn(user=user)
     uid = getUsername(binddn)
     dn = "cn=%s,ou=mailpasswd,%s" % (uid, basedn)
     conn = getConnection(binddn, server)
     if conn:
         try:
-            modifyMailpasswd(conn, dn, stdin=stdin) if change else printMailpasswd(conn, dn)
+            if delete:
+                conn.delete_s(dn)
+            elif change or create:
+                modifyMailpasswd(conn, dn, stdin=stdin, create=create)
+            else:
+                printMailpasswd(conn, dn)
         finally:
             conn.unbind()
     else:
         print "mailpasswd couldn't complete. See above for errors. If the problem persists, please contact `root@techhouse.org'."
 
-mailpasswd(args.user, args.modify, stdin=args.stdin)
+mailpasswd(args.user, args.modify, stdin=args.stdin, create=args.create, delete=args.delete)
