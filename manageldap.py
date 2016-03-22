@@ -17,6 +17,10 @@ server = "techhouse.org"
 basedn = "dc=techhouse,dc=org"
 maildomain = "techhouse.org"
 
+# Common values
+peopledn = "ou=People,%s" % (basedn)
+groupdn = "ou=Group,%s" % (basedn)
+
 ################################################################################
 # Changetypes
 # For the most part, these map to the same changetypes that you would use in an
@@ -33,7 +37,11 @@ Add = namedtuple("Add","dn modlist")
 Modify = namedtuple("Modify","dn modlist")
 Delete = namedtuple("Delete","dn")
 RDNMod = namedtuple("RDNMod","dn new flag")
-Transform = namedtuple("Transform","dn attr fun")
+Transform = namedtuple("Transform","dn filter attr fun")
+
+def PersonTransform(dn, attr, fun):
+    return Transform(dn, "(objectclass=person)", attr,
+        lambda attrs: map(lambda y: (ldap.MOD_REPLACE, attr, fun(y)), attrs))
 
 def getNextId(database="passwd"):
     """Return the next available id for the provided getent(1) database."""
@@ -49,7 +57,7 @@ def getBindDn(user=""):
     This function assumes that the uid 'user' maps to the DN uid=user,ou=People
     beneath the base DN."""
     username = user or getpass.getuser()
-    binddn = "uid=%s,ou=People,%s" % (username,basedn)
+    binddn = "uid=%s,%s" % (username, peopledn)
     return binddn
 
 def getUsername(dn):
@@ -65,11 +73,20 @@ def gecosChange(value, position):
     """Return a lambda that can modify a gecos at the spcified position."""
     return lambda gecos : ','.join(chainUpdate(gecos.split(','),value,position))
 
+def userdel(user):
+    dn = "uid=%s,%s" % (user, peopledn)
+    results = []
+    results.append(Transform(groupdn, "(memberUid=%s)" % (user),
+        "memberUid", lambda y: [(ldap.MOD_DELETE, "memberUid", user)]))
+    results.extend(groupdel(user))
+    results.append(Delete(dn))
+    return results
+
 def useradd(user,groups=[],uid=0,gid=0,name="",home="",shell="/bin/bash",gecos="",passwd='{crypt}sadtCr0CILzv2',room='',phone='',other=''):
     uid = str(uid) if uid else getNextId()
     name = user if not name else name
     home = home if home else "/home/%s" % user
-    dn = "uid=%s,ou=People,%s" % (user, basedn)
+    dn = "uid=%s,%s" % (user, peopledn)
     results = []
     attrs = [ ('uid', [user]),
               ('cn', [name]),
@@ -89,9 +106,13 @@ def useradd(user,groups=[],uid=0,gid=0,name="",home="",shell="/bin/bash",gecos="
     results.extend(usermod(user,groups=groups,append=True))
     return results
 
+def groupdel(group):
+    dn = "cn=%s,%s" % (group, groupdn)
+    return [ Delete(dn) ]
+
 def groupadd(group,gid=0):
     gid = str(gid) if gid else getNextId(database="group")
-    dn = "cn=%s,ou=Group,%s" % (group, basedn)
+    dn = "cn=%s,%s" % (group, groupdn)
     results = []
     attrs = [ ('objectClass', ['posixGroup','top']),
               ('cn', group),
@@ -104,7 +125,7 @@ def groupmems(add="",delete="",group="",list=False,purge=False):
         raise Exception("Expected a group name.")
     elif not (add or delete or list or purge):
         raise Exception("Expected an action.\nPossible actions include:\n\t--add\n\t--delete\n\t--list\n\t--purge")
-    dn = "cn=%s,ou=Group,%s" % (group, basedn)
+    dn = "cn=%s,%s" % (group, groupdn)
     attrs = []
     if add:
         attrs.append((ldap.MOD_ADD,'memberUid',add))
@@ -119,7 +140,7 @@ def groupmems(add="",delete="",group="",list=False,purge=False):
     return [Modify(dn,attrs)]
 
 def groupmod(group,name="",gid=0):
-    dn = "cn=%s,ou=Group,%s" % (group, basedn)
+    dn = "cn=%s,%s" % (group, groupdn)
     results = []
     attrs = []
     if name:
@@ -130,7 +151,7 @@ def groupmod(group,name="",gid=0):
     return results   
 
 def usermod(user,groups=[],append=False,home="",name="",expiredate="",inactive=0,gid=0,login="",lock=False,move_home=False,shell="",uid=0,unlock=False,room='',phone='',other=''):
-    dn = "uid=%s,ou=People,%s" % (user, basedn)
+    dn = "uid=%s,%s" % (user, peopledn)
     results = []
     attrs = []
     if groups:
@@ -147,13 +168,13 @@ def usermod(user,groups=[],append=False,home="",name="",expiredate="",inactive=0
             print("Note that without the --move-home option, the users files will all remain in their old home directory.")
     if name:
         attrs.append((ldap.MOD_REPLACE, 'cn', name))
-        results.append(Transform(dn,"gecos",gecosChange(name,0)))
+        results.append(PersonTransform(dn, "gecos", gecosChange(name, 0)))
     if room:
         attrs.append((ldap.MOD_REPLACE, 'roomNumber', room))
-        results.append(Transform(dn,"gecos",gecosChange(room,1)))
+        results.append(PersonTransform(dn, "gecos", gecosChange(room, 1)))
     if phone:
         attrs.append((ldap.MOD_REPLACE, 'homePhone', phone))
-        results.append(Transform(dn,"gecos",gecosChange(phone,3)))
+        results.append(PersonTransform(dn, "gecos", gecosChange(phone, 3)))
     if expiredate:
         #attrs.append((ldap.MOD_REPLACE, '?', expiredate))
         raise Exception("usermod currently doesn't update password expiration dates.")
@@ -163,12 +184,16 @@ def usermod(user,groups=[],append=False,home="",name="",expiredate="",inactive=0
         gid = str(gid)
         attrs.append((ldap.MOD_REPLACE, 'gid', gid))
     if login:
-        # This will require changing the actual record, which will require slightly different changes.
-        results.append(RDNMod("uid=%s,ou=People,%s" % (user, basedn), "uid=%s" % login, True))
+        # This will require changing the actual record, which will require
+        # slightly different changes.
+        results.append(RDNMod("uid=%s,%s" % (user, peopledn),
+            "uid=%s" % login, True))
     if lock:
-        # This will require some string manipulation of the crypted password. An exclamation point (!) must be added in front of the crypted password.
+        # This will require some manipulation of the crypted password. An
+        # exclamation point (!) must be added in front of the crypted password.
         attrs.append((ldap.MOD_REPLACE, 'loginShell', "/usr/sbin/nologin"))
-        results.append(Transform(dn,"userPassword",lambda pw: pw if pw.startswith("!") else "!" + pw))
+        results.append(PersonTransform(dn, "userPassword",
+            lambda pw: pw if pw.startswith("!") else "!" + pw))
     if shell:
         attrs.append((ldap.MOD_REPLACE, 'loginShell', shell))
     if uid:
@@ -179,7 +204,8 @@ def usermod(user,groups=[],append=False,home="",name="",expiredate="",inactive=0
         # password. An exclamation point (!) must be remove from the front
         # of the crypted password.
         attrs.append((ldap.MOD_REPLACE, 'loginShell', "/bin/bash"))
-        results.append(Transform(dn,"userPassword",lambda pw: pw[1:] if pw.startswith("!") else pw))
+        results.append(PersonTransform(dn, "userPassword",
+            lambda pw: pw[1:] if pw.startswith("!") else pw))
     moddeduser = Modify(dn,attrs)
     results.insert(0, moddeduser)
     return results
@@ -191,15 +217,18 @@ def handleLDIF(connection, ldif):
         if action == Add:
             connection.add_s(ldif.dn,ldif.modlist)
         elif action == Delete:
-            connection.delete_s(ldif.dn,ldif.modlist)
+            connection.delete_s(ldif.dn)
         elif action == Modify:
             connection.modify_s(ldif.dn,ldif.modlist)
         elif action == RDNMod:
             connection.modrdn_s(ldif.dn,ldif.new,ldif.flag)
         elif action == Transform:
-            a = connection.search_s(ldif.dn,ldap.SCOPE_SUBTREE, '(objectClass=person)', [ldif.attr])[0][1][ldif.attr]
-            modlist = map(lambda y: (ldap.MOD_REPLACE, ldif.attr,ldif.fun(y)),a)
-            connection.modify_s(ldif.dn,modlist)
+            results = connection.search_s(ldif.dn, ldap.SCOPE_SUBTREE,
+                ldif.filter, [ldif.attr])
+            for result in results:
+                vals = result[1][ldif.attr]
+                modlist = ldif.fun(vals)
+                connection.modify_s(result[0], modlist)
         else:
             raise Exception("Unknown action type.")
     except ldap.TYPE_OR_VALUE_EXISTS:

@@ -29,8 +29,8 @@ parser.add_argument("login",type=str)
 args = parser.parse_args()
 
 if re.match("^[a-z][a-z0-9-]*$", args.login):
-    groups=args.groups.split(",")
-    groups.remove('')
+    groups = args.groups.split(",") if args.groups != "" else []
+
     newuser = useradd(args.login,groups=groups,uid=args.uid,name=args.name,shell=args.shell,gecos=args.gecos)
     update(newuser)
 

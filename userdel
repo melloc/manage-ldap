@@ -1,0 +1,36 @@
+#! /usr/bin/env python
+
+from manageldap import *
+from subprocess import *
+import argparse, os, pwd, re, shutil
+
+def performLocal(name, remove):
+    user = pwd.getpwnam(name)
+    uid = user.pw_uid
+    gid = user.pw_gid
+    home = user.pw_dir
+    mail = "/var/mail/%s" % (name)
+
+    local = "/usr/local/sbin/deluser.local"
+    if os.path.exists(local):
+        deluser = call([local, name, str(uid), str(gid), home])
+
+    if not remove:
+        return
+
+    if os.path.isdir(home):
+        shutil.rmtree(home)
+
+    if os.path.isfile(mail):
+        os.remove(mail)
+
+parser = argparse.ArgumentParser(description="Add users to LDAP Directory")
+parser.add_argument('-r','--remove',action='store_true',help="Files in the user's home directory will be removed along with the home directory itself and the user's mail spool.")
+parser.add_argument("login",type=str)
+args = parser.parse_args()
+
+# Do local things first (like remove home and mail)
+performLocal(args.login, args.remove)
+
+rmuser = userdel(args.login)
+update(rmuser)
